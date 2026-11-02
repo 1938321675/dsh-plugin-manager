@@ -1,0 +1,11 @@
+# 运行时产物
+data/app.log
+data/plugin-registry.json
+data/settings.json
+data/backups/
+
+# 临时文件
+*.tmp
+*.log
+Thumbs.db
+desktop.ini

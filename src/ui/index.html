@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>DSH 插件管理器</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --bg-card: #171d26;
+    --bg-hover: #1e2632;
+    --bg-header: #131920;
+    --border: #253044;
+    --text: #d6deeb;
+    --text-dim: #7c8aa0;
+    --text-bright: #f0f4fa;
+    --accent: #4a9eff;
+    --accent-dim: #2d6db3;
+    --ok: #4ade80;
+    --ok-bg: rgba(74, 222, 128, 0.12);
+    --off: #f87171;
+    --off-bg: rgba(248, 113, 113, 0.12);
+    --warn: #fbbf24;
+    --warn-bg: rgba(251, 191, 36, 0.12);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* ---------- 顶栏 ---------- */
+  .topbar {
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+  }
+  .title { font-size: 15px; font-weight: 600; color: var(--text-bright); white-space: nowrap; }
+  .stats { display: flex; gap: 12px; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+  .stats b { color: var(--text-bright); font-weight: 600; }
+  .stats .on b { color: var(--ok); }
+  .stats .off b { color: var(--off); }
+  .search {
+    flex: 1;
+    min-width: 120px;
+    max-width: 320px;
+    margin-left: auto;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: var(--text);
+    font-size: 13px;
+    outline: none;
+    user-select: text;
+  }
+  .search:focus { border-color: var(--accent-dim); }
+  .search::placeholder { color: #4b5768; }
+  .btn {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+    font-family: inherit;
+  }
+  .btn:hover { background: var(--bg-hover); border-color: #33405a; }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: var(--accent-dim); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: var(--accent); }
+
+  /* ---------- 提示条 ---------- */
+  .banner { padding: 8px 14px; font-size: 12px; display: none; flex-shrink: 0; line-height: 1.5; }
+  .banner.show { display: block; }
+  .banner.warn { background: var(--warn-bg); color: var(--warn); border-bottom: 1px solid rgba(251,191,36,.25); }
+  .banner.error { background: var(--off-bg); color: var(--off); border-bottom: 1px solid rgba(248,113,113,.25); }
+  .banner b { color: inherit; }
+
+  /* ---------- 列表 ---------- */
+  .list-wrap { flex: 1; overflow-y: auto; overflow-x: hidden; }
+  .list-wrap::-webkit-scrollbar { width: 10px; }
+  .list-wrap::-webkit-scrollbar-track { background: var(--bg); }
+  .list-wrap::-webkit-scrollbar-thumb { background: #2c3849; border-radius: 5px; }
+  .list-wrap::-webkit-scrollbar-thumb:hover { background: #3a4a60; }
+
+  .section-label {
+    padding: 10px 14px 6px;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 14px;
+    border-bottom: 1px solid rgba(37, 48, 68, .5);
+  }
+  .row:hover { background: var(--bg-hover); }
+  .row.disabled-item .name { color: var(--text-dim); }
+
+  .row .idx { width: 30px; color: #48556a; font-size: 11px; text-align: right; flex-shrink: 0; }
+  .row .main { flex: 1; min-width: 0; }
+  .row .line1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .row .name { color: var(--text-bright); font-weight: 500; font-size: 13px; user-select: text; }
+  .row .ver { color: var(--text-dim); font-size: 11px; }
+  .row .line2 { color: var(--text-dim); font-size: 11px; margin-top: 2px; }
+  .row .line2 code { background: #0c1015; padding: 1px 5px; border-radius: 3px; color: #7a8ba3; font-size: 10.5px; }
+
+  .tag {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .tag.link { color: #a78bfa; border-color: rgba(167,139,250,.4); background: rgba(167,139,250,.1); }
+  .tag.latest { color: var(--warn); border-color: rgba(251,191,36,.4); background: rgba(251,191,36,.1); }
+  .tag.miss { color: var(--off); border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.1); }
+  .tag.dyn { color: #60a5fa; border-color: rgba(96,165,250,.4); background: rgba(96,165,250,.1); }
+
+  /* 开关 */
+  .switch { position: relative; width: 42px; height: 23px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .slider {
+    position: absolute; cursor: pointer; inset: 0;
+    background: #37424f; border-radius: 23px; transition: .18s;
+  }
+  .slider:before {
+    content: ""; position: absolute; height: 17px; width: 17px;
+    left: 3px; bottom: 3px; background: #8899ad; border-radius: 50%; transition: .18s;
+  }
+  .switch input:checked + .slider { background: var(--ok-bg); border: 1px solid rgba(74,222,128,.5); }
+  .switch input:checked + .slider:before { transform: translateX(19px); background: var(--ok); }
+  .switch input:not(:checked) + .slider { border: 1px solid rgba(248,113,113,.35); }
+  .switch input:disabled + .slider { opacity: .4; cursor: not-allowed; }
+  .switch.busy .slider { opacity: .55; }
+
+  .status-badge {
+    width: 62px; text-align: center; font-size: 11px; padding: 3px 0;
+    border-radius: 4px; flex-shrink: 0;
+  }
+  .status-badge.on { color: var(--ok); background: var(--ok-bg); }
+  .status-badge.off { color: var(--off); background: var(--off-bg); }
+  .status-badge.dyn { color: #60a5fa; background: rgba(96,165,250,.12); }
+  .status-badge.miss { color: var(--off); background: var(--off-bg); }
+
+  /* ---------- 底栏 ---------- */
+  .statusbar {
+    background: var(--bg-header);
+    border-top: 1px solid var(--border);
+    padding: 6px 14px;
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex;
+    gap: 16px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .statusbar .dot {
+    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: #55627a; margin-right: 5px; vertical-align: middle;
+  }
+  .statusbar .dot.on { background: var(--ok); }
+  .statusbar .dot.off { background: #55627a; }
+  .statusbar .path { user-select: text; }
+
+  /* ---------- 崩溃救援面板 ---------- */
+  .rescue {
+    display: none;
+    background: linear-gradient(180deg, rgba(248,113,113,.10), rgba(248,113,113,.04));
+    border-bottom: 1px solid rgba(248,113,113,.35);
+    flex-shrink: 0;
+    max-height: 42vh;
+    overflow-y: auto;
+  }
+  .rescue.show { display: block; }
+  .rescue-head {
+    display: flex; align-items: baseline; gap: 12px;
+    padding: 10px 14px 6px;
+  }
+  .rescue-title { color: var(--off); font-weight: 600; font-size: 14px; }
+  .rescue-detail { color: #c99; font-size: 11.5px; }
+  .rescue-body { padding: 0 14px 8px; }
+  .rescue-hint { color: var(--text-dim); font-size: 11.5px; margin-bottom: 8px; line-height: 1.5; }
+  .rescue-foot {
+    display: flex; gap: 8px; padding: 8px 14px 12px;
+  }
+  .rescue-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px; border-radius: 6px;
+    background: rgba(0,0,0,.22); margin-bottom: 6px;
+    cursor: pointer;
+  }
+  .rescue-item:hover { background: rgba(0,0,0,.32); }
+  .rescue-item input[type=checkbox] {
+    width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer;
+  }
+  .rescue-item .ri-name { color: var(--text-bright); font-size: 12.5px; }
+  .rescue-item .ri-meta { color: var(--text-dim); font-size: 11px; margin-left: auto; }
+
+  /* ---------- 设置面板 ---------- */
+  .settings {
+    display: none;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    padding: 14px;
+    flex-shrink: 0;
+  }
+  .settings.show { display: block; }
+  .settings-row {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+  }
+  .settings-label { color: var(--text-bright); font-size: 13px; }
+  .settings-field {
+    display: flex; align-items: center; gap: 5px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 8px;
+  }
+  .settings-field input {
+    width: 72px; background: transparent; border: none; outline: none;
+    color: var(--text-bright); font-size: 13px; font-family: inherit;
+    text-align: right; user-select: text;
+  }
+  .settings-field input::-webkit-outer-spin-button,
+  .settings-field input::-webkit-inner-spin-button { opacity: .5; }
+  .settings-field .unit { color: var(--text-dim); font-size: 12px; }
+  .settings-hint { color: var(--text-dim); font-size: 11.5px; }
+  .settings-note {
+    color: var(--text-dim); font-size: 11.5px; line-height: 1.7;
+    margin-bottom: 10px;
+  }
+  .settings-foot { display: flex; gap: 8px; }
+
+  /* ---------- 空态 ---------- */
+  .empty { padding: 40px; text-align: center; color: var(--text-dim); }
+
+  /* ---------- 提示浮层 ---------- */
+  .toast {
+    position: fixed; bottom: 46px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: #1e2632; border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 18px; font-size: 12.5px; color: var(--text-bright);
+    box-shadow: 0 8px 24px rgba(0,0,0,.5);
+    opacity: 0; pointer-events: none; transition: .22s; max-width: 80vw;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.ok { border-color: rgba(74,222,128,.5); }
+  .toast.err { border-color: rgba(248,113,113,.55); color: #fca5a5; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="title">DSH 插件管理器</div>
+    <div class="stats" id="stats"></div>
+    <input class="search" id="search" placeholder="搜索插件名…" autocomplete="off">
+    <button class="btn primary" id="btn-launch" title="由本程序启动 DSH 并监控它有没有崩溃">启动 DSH</button>
+    <button class="btn" id="btn-settings" title="设置启动观察时长">设置</button>
+    <button class="btn" id="btn-refresh" title="重新读取插件与状态">刷新</button>
+    <button class="btn" id="btn-folder" title="在文件资源管理器中打开 profile 目录">打开目录</button>
+  </div>
+
+  <!-- 设置面板 -->
+  <div class="settings" id="settings">
+    <div class="settings-row">
+      <label class="settings-label" for="inp-timeout">启动观察时长</label>
+      <div class="settings-field">
+        <input type="number" id="inp-timeout" min="10" max="600" step="10">
+        <span class="unit">秒</span>
+      </div>
+      <span class="settings-hint" id="timeout-hint"></span>
+    </div>
+    <div class="settings-note">
+      点「启动 DSH」后，程序会盯住进程这么久。<br>
+      这段时间内进程没崩，就认为启动成功；崩了就弹救援面板。<br>
+      DSH 启动到弹出界面要一分多钟的机器，这里填 120 或更大。
+    </div>
+    <div class="settings-foot">
+      <button class="btn primary" id="btn-settings-save">保存</button>
+      <button class="btn" id="btn-settings-close">关闭</button>
+    </div>
+  </div>
+
+  <div class="banner" id="banner"></div>
+
+  <!--
+    崩溃救援面板
+    只在「本程序启动的 DSH 崩了」时出现。
+    按安装时间倒序列出最可疑的插件，让用户一键禁用后重试。
+  -->
+  <div class="rescue" id="rescue">
+    <div class="rescue-head">
+      <span class="rescue-title">DSH 启动失败</span>
+      <span class="rescue-detail" id="rescue-detail"></span>
+    </div>
+    <div class="rescue-body">
+      <div class="rescue-hint">
+        下面这几个是最近安装的插件，最可能是问题来源。勾选要禁用的，然后重试启动。
+      </div>
+      <div id="rescue-list"></div>
+    </div>
+    <div class="rescue-foot">
+      <button class="btn primary" id="btn-rescue-apply">禁用并重试</button>
+      <button class="btn" id="btn-rescue-dismiss">暂时关闭</button>
+    </div>
+  </div>
+
+  <div class="list-wrap">
+    <div id="list"></div>
+  </div>
+
+  <div class="statusbar" id="statusbar"></div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+ * 前端只做两件事：渲染状态、把操作意图发给后端。
+ * 所有文件读写都在 PowerShell/Node 侧完成，这里不碰文件系统。
+ * ============================================================ */
+
+let DATA = null;
+let FILTER = '';
+
+const $ = (id) => document.getElementById(id);
+
+/** 调用后端。约定：window.chrome.webview 存在即运行在 WebView2 中。 */
+function invoke(cmd, arg) {
+  return new Promise((resolve, reject) => {
+    try {
+      window.chrome.webview.postMessage(JSON.stringify({ cmd, arg }));
+      PENDING.set(cmd, { resolve, reject });
+      setTimeout(() => {
+        if (PENDING.has(cmd)) {
+          PENDING.delete(cmd);
+          reject(new Error('后端无响应（超时）'));
+        }
+      }, 20000);
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+const PENDING = new Map();
+
+/**
+ * 后端采用「两个阶段」回复：
+ *   1. 立刻回 { ok:true, payload:{ pending:true } }  —— 表示请求已收到，正在处理
+ *   2. 处理完再回 { ok:true, payload:{...真实结果} } —— 这次才算完成
+ *
+ * 为什么这么设计：后端在 WebView2 的消息回调线程上不能同步跑 node
+ * （会把 UI 线程堵死，形成互锁）。所以它把活丢给定时器轮询，
+ * 先回一个 pending 让前端知道"收到了，别超时"。
+ *
+ * 前端因此不能收到第一条就 resolve，必须忽略 pending 继续等。
+ */
+window.chrome?.webview?.addEventListener('message', (e) => {
+  let msg;
+  try {
+    msg = JSON.parse(e.data);
+  } catch {
+    return;
+  }
+  const p = PENDING.get(msg.cmd);
+  if (!p) return;
+
+  // pending 只是"已收到"，不是结果，继续等
+  if (msg.ok && msg.payload && msg.payload.pending === true) return;
+
+  PENDING.delete(msg.cmd);
+  if (msg.ok) p.resolve(msg.payload);
+  else p.reject(new Error(msg.payload && msg.payload.error ? msg.payload.error : '操作失败'));
+});
+
+function fmtTime(ms) {
+  if (!ms || ms < 1e12) return '时间未知';
+  const d = new Date(ms);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function toast(msg, type) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (type || '');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.className = 'toast ' + (type || ''); }, 2600);
+}
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/* ---------------- 渲染 ---------------- */
+
+function render() {
+  if (!DATA) return;
+  const d = DATA;
+
+  // 顶栏统计
+  $('stats').innerHTML =
+    `<span>共 <b>${d.pluginCount}</b> 个</span>` +
+    `<span class="on">启用 <b>${d.enabledCount}</b></span>` +
+    `<span class="off">禁用 <b>${d.disabledCount}</b></span>` +
+    (d.dynamicCount ? `<span>动态 <b>${d.dynamicCount}</b></span>` : '');
+
+  // 提示条
+  const banner = $('banner');
+  if (d.patchError) {
+    banner.className = 'banner error show';
+    banner.innerHTML = `<b>配置文件解析失败</b>：${esc(d.patchError)}　` +
+      `这个文件本身有问题，DSH 可能因此起不来。`;
+  } else if (!d.patchExists) {
+    banner.className = 'banner warn show';
+    banner.innerHTML = `尚未找到 <code>cordis.patch.yml</code>，首次切换插件时会自动创建。`;
+  } else {
+    banner.className = 'banner';
+  }
+
+  // 列表
+  const kw = FILTER.trim().toLowerCase();
+  const items = d.items.filter((it) =>
+    !kw ||
+    it.name.toLowerCase().includes(kw) ||
+    (it.version || '').toLowerCase().includes(kw) ||
+    (it.description || '').toLowerCase().includes(kw)
+  );
+
+  if (!items.length) {
+    $('list').innerHTML = `<div class="empty">没有匹配「${esc(FILTER)}」的插件</div>`;
+  } else {
+    // 最近安装的 5 个单独置顶高亮，方便快速定位刚装坏的插件
+    const recentCut = 5;
+    const html = [];
+    if (!kw && items.length > recentCut) {
+      html.push(`<div class="section-label">最近安装（可能是问题来源）</div>`);
+      html.push(items.slice(0, recentCut).map((it, i) => rowHtml(it, i + 1, true)).join(''));
+      html.push(`<div class="section-label">其余插件</div>`);
+      html.push(items.slice(recentCut).map((it, i) => rowHtml(it, i + recentCut + 1, false)).join(''));
+    } else {
+      html.push(items.map((it, i) => rowHtml(it, i + 1, false)).join(''));
+    }
+    $('list').innerHTML = html.join('');
+  }
+
+  // 底栏
+  const runCls = d.dshRunning === true ? 'on' : 'off';
+  const runTxt = d.dshRunning === true ? '运行中' : d.dshRunning === false ? '未运行' : '未知';
+  const mtime = d.patchMtime
+    ? new Date(d.patchMtime).toLocaleString('zh-CN', { hour12: false })
+    : '—';
+  $('statusbar').innerHTML =
+    `<span><span class="dot ${runCls}"></span>DSH ${runTxt}</span>` +
+    `<span class="path">配置：${esc(d.patchFile)}</span>` +
+    `<span>最后修改：${esc(mtime)}</span>` +
+    `<span>（${d.patchEntryCount} 条记录）</span>`;
+}
+
+function rowHtml(it, idx, isRecent) {
+  const isDyn = it.enabled === null;
+  const on = it.enabled === true;
+  const badge = it.missing
+    ? `<span class="status-badge miss">未安装</span>`
+    : isDyn
+      ? `<span class="status-badge dyn">动态</span>`
+      : on
+        ? `<span class="status-badge on">已启用</span>`
+        : `<span class="status-badge off">已禁用</span>`;
+
+  const tags = [];
+  if (it.isLinked) tags.push(`<span class="tag link">本地开发</span>`);
+  if (isRecent) tags.push(`<span class="tag latest">最近安装</span>`);
+  if (it.missing) tags.push(`<span class="tag miss">目录缺失</span>`);
+  if (isDyn) tags.push(`<span class="tag dyn">状态动态</span>`);
+
+  // row 列表：逐个转义再用分隔符拼接，不能对拼好的整串再转义
+  const rows = it.rowIds && it.rowIds.length
+    ? it.rowIds.map((id) => `<code>${esc(id)}</code>`).join(' ')
+    : '<span style="opacity:.6">随宿主加载</span>';
+
+  const checked = on ? 'checked' : '';
+  const disabledAttr = it.missing || isDyn ? 'disabled' : '';
+
+  return `
+  <div class="row ${on ? '' : 'disabled-item'}" data-name="${esc(it.name)}">
+    <div class="idx">${idx}</div>
+    <div class="main">
+      <div class="line1">
+        <span class="name">${esc(it.name)}</span>
+        ${it.version ? `<span class="ver">v${esc(it.version)}</span>` : ''}
+        ${tags.join('')}
+      </div>
+      <div class="line2">
+        ${esc(fmtTime(it.installMs))} 安装　·　row: ${rows}
+      </div>
+    </div>
+    ${badge}
+    <label class="switch" title="${esc(it.stateReason || '')}">
+      <input type="checkbox" ${checked} ${disabledAttr}
+             data-name="${esc(it.name)}">
+      <span class="slider"></span>
+    </label>
+  </div>`;
+}
+
+/* ---------------- 交互 ---------------- */
+
+document.addEventListener('change', async (e) => {
+  const cb = e.target;
+  if (!cb.matches('input[type=checkbox][data-name]')) return;
+
+  const name = cb.dataset.name;
+  const want = cb.checked;
+  const lab = cb.closest('.switch');
+  lab.classList.add('busy');
+  cb.disabled = true;
+
+  try {
+    const res = await invoke('toggle', { name, enabled: want });
+    if (res && res.ok) {
+      toast(`${name} 已${want ? '启用' : '禁用'}　重启 DSH 后生效`, 'ok');
+      await refresh();
+    } else {
+      toast(res && res.error ? res.error : '操作失败', 'err');
+      cb.checked = !want;
+    }
+  } catch (err) {
+    toast(err.message, 'err');
+    cb.checked = !want;
+  } finally {
+    lab.classList.remove('busy');
+    cb.disabled = false;
+  }
+});
+
+$('search').addEventListener('input', (e) => {
+  FILTER = e.target.value;
+  render();
+});
+
+$('btn-refresh').addEventListener('click', async () => {
+  try {
+    await refresh();
+    toast('已刷新', 'ok');
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+});
+
+$('btn-folder').addEventListener('click', async () => {
+  try {
+    await invoke('openFolder');
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+});
+
+/* ---------------- 设置 ---------------- */
+
+let SETTINGS = { launchTimeoutSec: 120, minSec: 10, maxSec: 600 };
+
+async function loadSettings() {
+  try {
+    const r = await invoke('settings');
+    if (r && r.settings) {
+      SETTINGS = r.settings;
+      $('inp-timeout').value = SETTINGS.launchTimeoutSec;
+      $('inp-timeout').min = SETTINGS.minSec;
+      $('inp-timeout').max = SETTINGS.maxSec;
+      updateTimeoutHint();
+    }
+  } catch {
+    /* 读不到就用默认值，不影响主流程 */
+  }
+}
+
+function updateTimeoutHint() {
+  const v = Number($('inp-timeout').value);
+  const hint = $('timeout-hint');
+  if (!Number.isFinite(v) || v <= 0) {
+    hint.textContent = '';
+    return;
+  }
+  if (v < SETTINGS.minSec || v > SETTINGS.maxSec) {
+    hint.textContent = `范围 ${SETTINGS.minSec}–${SETTINGS.maxSec} 秒`;
+    hint.style.color = 'var(--warn)';
+    return;
+  }
+  hint.style.color = '';
+  // 用一句人话说明这个值意味着什么，比纯数字好懂
+  const m = v / 60;
+  hint.textContent =
+    m >= 1
+      ? `约 ${m % 1 === 0 ? m : m.toFixed(1)} 分钟`
+      : `${v} 秒`;
+}
+
+$('btn-settings').addEventListener('click', () => {
+  const panel = $('settings');
+  if (panel.classList.contains('show')) {
+    panel.classList.remove('show');
+    return;
+  }
+  $('inp-timeout').value = SETTINGS.launchTimeoutSec;
+  updateTimeoutHint();
+  panel.classList.add('show');
+  $('inp-timeout').focus();
+  $('inp-timeout').select();
+});
+
+$('btn-settings-close').addEventListener('click', () => {
+  $('settings').classList.remove('show');
+});
+
+$('inp-timeout').addEventListener('input', updateTimeoutHint);
+
+$('btn-settings-save').addEventListener('click', async () => {
+  const raw = Number($('inp-timeout').value);
+  if (!Number.isFinite(raw)) {
+    toast('请填一个数字', 'err');
+    return;
+  }
+  if (raw < SETTINGS.minSec || raw > SETTINGS.maxSec) {
+    toast(`范围是 ${SETTINGS.minSec}–${SETTINGS.maxSec} 秒`, 'err');
+    return;
+  }
+
+  const btn = $('btn-settings-save');
+  btn.disabled = true;
+  btn.textContent = '保存中…';
+  try {
+    const r = await invoke('settings', {
+      save: true,
+      settings: { launchTimeoutSec: Math.round(raw) },
+    });
+    if (r && r.settings) {
+      SETTINGS = r.settings;
+      $('inp-timeout').value = SETTINGS.launchTimeoutSec;
+      updateTimeoutHint();
+    }
+    $('settings').classList.remove('show');
+    toast(`已保存：启动观察 ${SETTINGS.launchTimeoutSec} 秒`, 'ok');
+  } catch (err) {
+    toast(err.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '保存';
+  }
+});
+
+/* ---------------- 启动与崩溃救援 ---------------- */
+
+$('btn-launch').addEventListener('click', async () => {
+  const btn = $('btn-launch');
+  if (btn.disabled) return;
+
+  // 从"最久没崩"的角度算观察期：按设置里的秒数等
+  const watchSec = SETTINGS.launchTimeoutSec;
+  btn.disabled = true;
+  btn.textContent = `启动中…（观察 ${watchSec} 秒）`;
+  hideRescue();
+
+  try {
+    // 后端按设置里的时长观察；进程崩了会提前返回失败
+    const res = await invoke('launch', { watchMs: watchSec * 1000 });
+
+    if (res && res.ok) {
+      toast(`DSH 已启动（观察 ${Math.round(watchSec)} 秒无异常）`, 'ok');
+    } else if (res && res.reason === 'not-found') {
+      toast(res.message || '找不到 DeepSeek Harness.exe', 'err');
+    } else {
+      // 启动失败 → 拉出救援面板，列出最可疑的插件
+      await showRescue(res);
+    }
+  } catch (err) {
+    toast(err.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '启动 DSH';
+    refresh().catch(() => {});
+  }
+});
+
+async function showRescue(result) {
+  let items = [];
+  try {
+    const r = await invoke('suspects', { limit: 3 });
+    items = (r && r.items) || [];
+  } catch {
+    items = [];
+  }
+
+  const detail = $('rescue-detail');
+  detail.textContent =
+    (result && (result.message || result.reason)) || '进程异常退出';
+
+  const list = $('rescue-list');
+  if (!items.length) {
+    list.innerHTML = '<div class="rescue-hint">没有可禁用的候选插件。</div>';
+  } else {
+    list.innerHTML = items
+      .map(
+        (it) => `
+      <label class="rescue-item">
+        <input type="checkbox" data-name="${esc(it.name)}" checked>
+        <span class="ri-name">${esc(it.name)}</span>
+        <span class="ri-meta">v${esc(it.version || '-')}　${esc(fmtTime(it.installMs))} 安装</span>
+      </label>`
+      )
+      .join('');
+  }
+  $('rescue').classList.add('show');
+}
+
+function hideRescue() {
+  $('rescue').classList.remove('show');
+}
+
+$('btn-rescue-dismiss').addEventListener('click', hideRescue);
+
+$('btn-rescue-apply').addEventListener('click', async () => {
+  const boxes = [...document.querySelectorAll('#rescue-list input[type=checkbox]')];
+  const picked = boxes.filter((b) => b.checked).map((b) => b.dataset.name);
+  if (!picked.length) {
+    toast('没有勾选任何插件', 'err');
+    return;
+  }
+
+  const btn = $('btn-rescue-apply');
+  btn.disabled = true;
+  btn.textContent = '处理中…';
+
+  try {
+    const failed = [];
+    for (const name of picked) {
+      const r = await invoke('toggle', { name, enabled: false });
+      if (!r || !r.ok) failed.push(`${name}: ${r && r.error ? r.error : '失败'}`);
+    }
+
+    hideRescue();
+    await refresh();
+
+    if (failed.length) {
+      toast(`部分插件禁用失败：${failed[0]}`, 'err');
+      return;
+    }
+
+    toast(`已禁用 ${picked.length} 个插件，重新尝试启动…`, 'ok');
+    // 禁用完直接再试一次，形成闭环
+    setTimeout(() => $('btn-launch').click(), 700);
+  } catch (err) {
+    toast(err.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '禁用并重试';
+  }
+});
+
+async function refresh() {
+  DATA = await invoke('load');
+  render();
+}
+
+// 启动
+// 设置先读（决定启动按钮的观察时长），再读插件列表。
+// 两者互不依赖，用 Promise.all 并行，少等一轮。
+Promise.all([
+  loadSettings().catch(() => {}),
+  refresh().catch((err) => {
+    $('list').innerHTML = `<div class="empty">加载失败：${esc(err.message)}</div>`;
+  }),
+]);
+</script>
+</body>
+</html>
